@@ -1,0 +1,39 @@
+# Environment variables — never commit these
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Build outputs
+dist/
+build/
+
+# Vercel / Render
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Auto-added by gitpush.py
+credentials.json
+secrets.json
+service_account.json
+token.json
