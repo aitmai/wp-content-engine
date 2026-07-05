@@ -22,16 +22,18 @@
     },
     {
       "parameters": {
+        "resource": "record",
         "operation": "search",
-        "base": { "value": "={{ $env.AIRTABLE_BASE_ID }}" },
-        "table": { "value": "Sites" },
-        "filterByFormula": "={{ \"{Active} = TRUE()\" }}"
+        "base": { "mode": "id", "value": "appGnHTDaC2tz14Tz" },
+        "table": { "mode": "list", "value": "Sites" },
+        "filterByFormula": "{Active} = TRUE()",
+        "returnAll": true
       },
       "id": "get-active-sites",
       "name": "Get Active Sites",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.1,
-      "notes": "Pulls every row in the Sites table where Active is checked. This is what makes the workflow multi-site: it loops over whatever sites exist in Airtable rather than a hardcoded single site.",
+      "notes": "Pulls every row in the Sites table where Active is checked. FIXED: Base set via 'By ID' mode with real base ID (appGnHTDaC2tz14Tz) instead of $env expression, since n8n Cloud Starter tier blocks $env access. Filter formula entered as plain text (Fixed mode) with NO outer quotes - typing quotes around the whole formula breaks it.",
       "position": [220, 0]
     },
     {
@@ -47,43 +49,33 @@
     },
     {
       "parameters": {
+        "resource": "record",
         "operation": "search",
-        "base": { "value": "={{ $env.AIRTABLE_BASE_ID }}" },
-        "table": { "value": "Keywords" },
-        "filterByFormula": "={{ \"AND({SiteId} = '\" + $json.SiteName + \"', {Status} = 'Assigned')\" }}"
+        "base": { "mode": "id", "value": "appGnHTDaC2tz14Tz" },
+        "table": { "mode": "list", "value": "Keywords" },
+        "filterByFormula": "{Status} = 'Assigned'",
+        "returnAll": true
       },
       "id": "get-assigned-keywords",
       "name": "Get Assigned Keywords For This Site",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.1,
-      "notes": "Pulls keywords for this specific site that are marked 'Assigned' - i.e. ready to become content, as opposed to just 'Researched'.",
+      "notes": "SIMPLIFIED for single-site testing: filters only on Status='Assigned', not yet filtered by SiteId. Once you have more than one active site, upgrade this formula to also match SiteId - e.g. AND({Status}='Assigned', FIND('SITENAME', ARRAYJOIN({SiteId})) > 0) - built as an Expression (fx) referencing $('Get Active Sites').item.json.SiteName, not typed as Fixed text with literal quotes.",
       "position": [660, 0]
     },
     {
       "parameters": {
-        "batchSize": 1,
-        "options": {}
-      },
-      "id": "split-by-keyword",
-      "name": "Split By Keyword",
-      "type": "n8n-nodes-base.splitInBatches",
-      "typeVersion": 3,
-      "position": [880, 0]
-    },
-    {
-      "parameters": {
         "method": "GET",
-        "url": "={{ $json.productLookupUrl }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "https://api.github.com",
+        "authentication": "none",
         "options": {}
       },
       "id": "fetch-product-data",
       "name": "Fetch Product/Topic Data",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "notes": "Generic data-fetch step. For a product-review site this hits Amazon PA-API; for a different niche this could hit a different source entirely. What matters is it's scoped per-keyword/per-site, not hardcoded to one product category.",
-      "position": [1100, 0]
+      "notes": "PLACEHOLDER: currently points at api.github.com with no auth, just to let the pipeline run end-to-end. Replace with a real product/topic data source (Amazon PA-API, a scraper, or anything relevant to your niche) once you're ready. n8n automatically runs this once per item flowing in from the previous node - no separate 'Split By Keyword' node needed, which is why that node was removed from this version.",
+      "position": [880, 0]
     },
     {
       "parameters": {
@@ -98,14 +90,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"system_prompt\": $('Get Active Sites').item.json.ContentVoicePrompt,\n  \"user_prompt\": \"Write or update a post targeting the keyword: \" + $('Split By Keyword').item.json.Keyword + \". Site niche: \" + $('Get Active Sites').item.json.Niche + \". Product/topic data: \" + JSON.stringify($json)\n} }}"
+        "jsonBody": "={{ {\n  \"system_prompt\": $('Get Active Sites').item.json.ContentVoicePrompt,\n  \"user_prompt\": \"Write or update a post targeting the keyword: \" + $('Get Assigned Keywords For This Site').item.json.Keyword + \". Site niche: \" + $('Get Active Sites').item.json.Niche + \". Product/topic data: \" + JSON.stringify($json)\n} }}"
       },
       "id": "generate-content",
       "name": "Generate/Update Content (Claude via Worker)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "notes": "system_prompt is pulled from the current Site's ContentVoicePrompt field, not hardcoded - this is the key change that lets one workflow write in a different voice per site.",
-      "position": [1320, 0]
+      "notes": "IMPORTANT: if your n8n plan blocks $env access (Cloud Starter tier does), replace both $env.CLOUDFLARE_WORKER_URL and $env.N8N_WEBHOOK_SECRET below with your actual literal values, same fix as applied to the Airtable nodes' Base field.",
+      "position": [1100, 0]
     },
     {
       "parameters": {
@@ -120,20 +112,21 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"wp_base_url\": $('Get Active Sites').item.json.WPBaseURL,\n  \"wp_username\": $('Get Active Sites').item.json.WPUsername,\n  \"wp_app_password\": $('Get Active Sites').item.json.WPAppPassword,\n  \"title\": $('Split By Keyword').item.json.Keyword,\n  \"content\": $json.content[0].text,\n  \"categories\": ($('Get Active Sites').item.json.DefaultCategories || \"\").split(\",\")\n} }}"
+        "jsonBody": "={{ {\n  \"wp_base_url\": $('Get Active Sites').item.json.WPBaseURL,\n  \"wp_username\": $('Get Active Sites').item.json.WPUsername,\n  \"wp_app_password\": $('Get Active Sites').item.json.WPAppPassword,\n  \"title\": $('Get Assigned Keywords For This Site').item.json.Keyword,\n  \"content\": $json.content[0].text,\n  \"categories\": ($('Get Active Sites').item.json.DefaultCategories || \"\").split(\",\")\n} }}"
       },
       "id": "push-wp-draft",
       "name": "Push WordPress Draft (site-specific creds)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "notes": "wp_base_url/wp_username/wp_app_password come from the current Site's Airtable record, not from Worker env vars. This is what makes the Worker itself site-agnostic - it just forwards whatever credentials n8n hands it.",
-      "position": [1540, 0]
+      "notes": "Same $env caveat as the node above - replace with literal values if your n8n plan blocks env var access. Credentials themselves (wp_base_url/wp_username/wp_app_password) correctly pull from the current Site's Airtable record, not from Worker secrets.",
+      "position": [1320, 0]
     },
     {
       "parameters": {
+        "resource": "record",
         "operation": "create",
-        "base": { "value": "={{ $env.AIRTABLE_BASE_ID }}" },
-        "table": { "value": "ContentPipeline" },
+        "base": { "mode": "id", "value": "appGnHTDaC2tz14Tz" },
+        "table": { "mode": "list", "value": "ContentPipeline" },
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -150,14 +143,16 @@
       "name": "Log to Airtable (linked to Site)",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.1,
-      "position": [1760, 0]
+      "notes": "FIXED: field name corrected to SiteId (matches your actual Airtable field), Base set by ID.",
+      "position": [1540, 0]
     },
     {
       "parameters": {
+        "resource": "record",
         "operation": "update",
-        "base": { "value": "={{ $env.AIRTABLE_BASE_ID }}" },
-        "table": { "value": "Keywords" },
-        "id": "={{ $('Split By Keyword').item.json.id }}",
+        "base": { "mode": "id", "value": "appGnHTDaC2tz14Tz" },
+        "table": { "mode": "list", "value": "Keywords" },
+        "id": "={{ $('Get Assigned Keywords For This Site').item.json.id }}",
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
@@ -169,7 +164,7 @@
       "name": "Mark Keyword As In-Content",
       "type": "n8n-nodes-base.airtable",
       "typeVersion": 2.1,
-      "position": [1980, 0]
+      "position": [1760, 0]
     }
   ],
   "connections": {
@@ -183,9 +178,6 @@
       "main": [[{ "node": "Get Assigned Keywords For This Site", "type": "main", "index": 0 }]]
     },
     "Get Assigned Keywords For This Site": {
-      "main": [[{ "node": "Split By Keyword", "type": "main", "index": 0 }]]
-    },
-    "Split By Keyword": {
       "main": [[{ "node": "Fetch Product/Topic Data", "type": "main", "index": 0 }]]
     },
     "Fetch Product/Topic Data": {
@@ -202,6 +194,6 @@
     }
   },
   "meta": {
-    "notes": "Second workflow (not included here) exposes a Webhook node listening for 'Status = Approved' in the ContentPipeline table (via an Airtable automation -> webhook, payload includes both post_id and site_id). That workflow looks up the matching Sites record for wp_base_url/wp_username/wp_app_password, then calls POST {CLOUDFLARE_WORKER_URL}/wp/publish with those plus post_id. This keeps publish gated behind human approval, per-site."
+    "notes": "CHANGES FROM PREVIOUS VERSION: (1) Removed 'Split By Keyword' node - n8n automatically runs downstream nodes once per input item, so it was redundant and its broken output connection was blocking the whole chain. (2) Get Active Sites and Get Assigned Keywords filter formulas fixed to plain, unquoted Airtable formula syntax. (3) Fetch Product/Topic Data defaults to a working no-auth call (api.github.com) as a placeholder - swap for your real data source. (4) All Airtable nodes' Base field set via literal Base ID instead of $env expression, since n8n Cloud Starter tier blocks environment variable access - if your CLOUDFLARE_WORKER_URL/N8N_WEBHOOK_SECRET $env references also fail, replace those the same way. (5) Second workflow (webhook -> lookup Site -> call Worker's /wp/publish) is still not included here and needs to be built separately in n8n for the Approved-status publish gate to work."
   }
 }
